@@ -5,3 +5,8 @@ _ext
 work
 work/*
 _ext/
+**/build
+**/*.egg-info*
+*.so
+model/
+*.swp

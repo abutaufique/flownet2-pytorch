@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
-
+import cv2
 import argparse, os, sys, subprocess
 import setproctitle, colorama
 import numpy as np
@@ -363,6 +363,7 @@ if __name__ == '__main__':
             # when ground-truth flows are not available for inference_dataset, 
             # the targets are set to all zeros. thus, losses are actually L1 or L2 norms of compute optical flows, 
             # depending on the type of loss norm passed in
+            print(data[0].shape, target[0].shape)
             with torch.no_grad():
                 losses, output = model(data[0], target[0], inference=True)
 

@@ -1,14 +1,11 @@
 import torch
 import torch.utils.data as data
-
 import os, math, random
 from os.path import *
 import numpy as np
 
 from glob import glob
 import utils.frame_utils as frame_utils
-
-from scipy.misc import imread, imresize
 
 class StaticRandomCrop(object):
     def __init__(self, image_size, crop_size):
@@ -62,7 +59,7 @@ class MpiSintel(data.Dataset):
             self.flow_list += [file]
 
         self.size = len(self.image_list)
-
+        #pdb.set_trace()
         self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
 
         if (self.render_size[0] < 0) or (self.render_size[1] < 0) or (self.frame_size[0]%64) or (self.frame_size[1]%64):
@@ -97,7 +94,6 @@ class MpiSintel(data.Dataset):
 
         images = torch.from_numpy(images.astype(np.float32))
         flow = torch.from_numpy(flow.astype(np.float32))
-
         return [images], [flow]
 
     def __len__(self):
@@ -110,6 +106,75 @@ class MpiSintelClean(MpiSintel):
 class MpiSintelFinal(MpiSintel):
     def __init__(self, args, is_cropped = False, root = '', replicates = 1):
         super(MpiSintelFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'final', replicates = replicates)
+
+class MpiSintelTest(data.Dataset):
+    def __init__(self, args, is_cropped = False, root = '', dstype = 'clean', replicates = 1):
+        self.args = args
+        self.is_cropped = is_cropped
+        self.crop_size = args.crop_size
+        self.render_size = args.inference_size
+        self.replicates = replicates
+
+        image_root = join(root, dstype, 'ambush_1')
+
+        file_list = sorted(glob(join(image_root, '*.png')))
+        self.image_list = []
+
+        for file in file_list:
+            fbase = file[len(image_root)+1:]
+            fprefix = fbase[:-8]
+            fnum = int(fbase[-8:-4])
+
+            img1 = join(image_root, fprefix + "%04d"%(fnum+0) + '.png')
+            img2 = join(image_root, fprefix + "%04d"%(fnum+1) + '.png')
+
+            if not isfile(img1) or not isfile(img2) or not isfile(file):
+                continue
+
+            self.image_list += [[img1, img2]]
+
+        self.size = len(self.image_list)
+        self.frame_size = frame_utils.read_gen(self.image_list[0][0]).shape
+
+        if (self.render_size[0] < 0) or (self.render_size[1] < 0) or (self.frame_size[0]%64) or (self.frame_size[1]%64):
+            self.render_size[0] = ( (self.frame_size[0])//64 ) * 64
+            self.render_size[1] = ( (self.frame_size[1])//64 ) * 64
+
+        args.inference_size = self.render_size
+
+
+    def __getitem__(self, index):
+
+        index = index % self.size
+
+        img1 = frame_utils.read_gen(self.image_list[index][0])
+        img2 = frame_utils.read_gen(self.image_list[index][1])
+        img_shape = img1.shape
+        flow = frame_utils.fill_gen((img_shape[0], img_shape[1], 2))
+
+        images = [img1, img2]
+        image_size = img1.shape[:2]
+
+        if self.is_cropped:
+            cropper = StaticRandomCrop(image_size, self.crop_size)
+        else:
+            cropper = StaticCenterCrop(image_size, self.render_size)
+        images = list(map(cropper, images))
+        flow = cropper(flow)
+
+        images = np.array(images).transpose(3,0,1,2)
+        flow = flow.transpose(2,0,1)
+
+        images = torch.from_numpy(images.astype(np.float32))
+        flow = torch.from_numpy(flow)
+        #pdb.set_trace()
+        return [images], [flow]
+
+    def __len__(self):
+        return self.size * self.replicates
+
+
+
 
 class FlyingChairs(data.Dataset):
   def __init__(self, args, is_cropped, root = '/path/to/FlyingChairs_release/data', replicates = 1):
